@@ -325,6 +325,12 @@
 
   <script>
     let contentModified = false;
+    let editMode = true; // Default edit mode
+
+    // User configurable whitelist of domains that should open in edit mode
+    let userEditDomains = {
+      'keepworking.github.io': true
+    };
 
     function setPublish(publish) {
       let editor = document.getElementById("editor");
@@ -337,10 +343,162 @@
         toolbar.style.display = "none";
       }
       else {
-
         editor.contentEditable = "true";
         filename.contentEditable = "plaintext-only";
         toolbar.style.display = "flex";
+      }
+    }
+
+    function determineEditMode() {
+      // Get current URL
+      const url = window.location.href;
+      const urlObj = new URL(url);
+      const protocol = urlObj.protocol;
+      const hostname = urlObj.hostname;
+      const searchParams = new URLSearchParams(urlObj.search);
+      const hash = urlObj.hash;
+
+      // Check for explicit override via query param or URL hash
+      if (searchParams.has('edit') || hash === '#edit') {
+        return true;
+      }
+      
+      if (searchParams.has('readonly') || hash === '#readonly') {
+        return false;
+      }
+
+      // If local file, default to edit mode
+      if (protocol === 'file:') {
+        return true;
+      }
+
+      // Check if the hostname is in the user's whitelist
+      if (userEditDomains[hostname] || 
+          Object.keys(userEditDomains).some(domain => hostname.endsWith('.' + domain) || 
+                                                     hostname === domain || 
+                                                     hostname.includes(domain + '/'))) {
+        return true;
+      }
+
+      // Default for web (http/https): read-only mode
+      return false;
+    }
+
+    // Saves user's domain whitelist to localStorage
+    function saveUserDomains() {
+      localStorage.setItem('nashUserEditDomains', JSON.stringify(userEditDomains));
+    }
+
+    // Loads user's domain whitelist from localStorage
+    function loadUserDomains() {
+      const saved = localStorage.getItem('nashUserEditDomains');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            // Make sure default domain is always included
+            parsed['keepworking.github.io'] = true;
+            return parsed;
+          }
+        } catch (e) {
+          console.error('Failed to parse saved domains:', e);
+        }
+      }
+      return { 'keepworking.github.io': true };
+    }
+
+    // Add domain to whitelist
+    function addEditDomain(domain) {
+      if (!domain) return;
+      
+      // Strip protocol if included
+      domain = domain.replace(/^https?:\/\//, '');
+      // Strip trailing slash if included
+      domain = domain.replace(/\/$/, '');
+      
+      userEditDomains[domain] = true;
+      saveUserDomains();
+    }
+
+    // Remove domain from whitelist
+    function removeEditDomain(domain) {
+      if (domain === 'keepworking.github.io') return; // Don't allow removing default domain
+      delete userEditDomains[domain];
+      saveUserDomains();
+    }
+
+    // Show domain management UI
+    function showDomainManager() {
+      const modalHTML = `
+        <div id="domainManagerModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; display:flex; justify-content:center; align-items:center;">
+          <div style="background:white; padding:20px; border-radius:8px; max-width:600px; width:90%;">
+            <h2>Manage Edit Mode Domains</h2>
+            <p>These domains will open Nash in edit mode by default:</p>
+            <div id="domainList" style="margin-bottom:15px;"></div>
+            <div style="display:flex; margin-bottom:15px;">
+              <input id="newDomain" type="text" placeholder="example.com" style="flex:1; padding:5px; margin-right:10px;">
+              <button onclick="addDomainFromInput()">Add Domain</button>
+            </div>
+            <div style="text-align:right;">
+              <button onclick="closeDomainManager()">Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      const modalContainer = document.createElement('div');
+      modalContainer.innerHTML = modalHTML;
+      document.body.appendChild(modalContainer);
+      
+      renderDomainList();
+    }
+
+    function renderDomainList() {
+      const domainList = document.getElementById('domainList');
+      if (!domainList) return;
+      
+      domainList.innerHTML = '';
+      
+      Object.keys(userEditDomains).forEach(domain => {
+        const domainItem = document.createElement('div');
+        domainItem.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin:5px 0; padding:5px; border:1px solid #eee;';
+        
+        const domainText = document.createElement('span');
+        domainText.textContent = domain;
+        domainItem.appendChild(domainText);
+        
+        if (domain !== 'keepworking.github.io') {
+          const removeBtn = document.createElement('button');
+          removeBtn.textContent = 'Remove';
+          removeBtn.onclick = function() {
+            removeEditDomain(domain);
+            renderDomainList();
+          };
+          domainItem.appendChild(removeBtn);
+        } else {
+          const defaultLabel = document.createElement('span');
+          defaultLabel.textContent = '(default)';
+          defaultLabel.style.color = '#888';
+          domainItem.appendChild(defaultLabel);
+        }
+        
+        domainList.appendChild(domainItem);
+      });
+    }
+
+    function addDomainFromInput() {
+      const input = document.getElementById('newDomain');
+      if (input && input.value) {
+        addEditDomain(input.value);
+        input.value = '';
+        renderDomainList();
+      }
+    }
+
+    function closeDomainManager() {
+      const modal = document.getElementById('domainManagerModal');
+      if (modal && modal.parentNode) {
+        modal.parentNode.remove();
       }
     }
 
@@ -700,6 +858,48 @@
       }
     }
 
+    // Add edit mode toggle button to toolbar
+    function addEditModeToggle() {
+      const toolbar = document.getElementById('toolbar');
+      const splitbar = document.getElementById('splitbar');
+      
+      if (!toolbar || !splitbar) return;
+      
+      // Create edit mode toggle button
+      const toggleBtn = document.createElement('button');
+      toggleBtn.id = 'editModeToggle';
+      toggleBtn.textContent = editMode ? '📖 View' : '✏️ Edit';
+      toggleBtn.onclick = function() {
+        editMode = !editMode;
+        setPublish(!editMode);
+        this.textContent = editMode ? '📖 View' : '✏️ Edit';
+      };
+      
+      // Create domain manager button
+      const domainsBtn = document.createElement('button');
+      domainsBtn.textContent = '🔧';
+      domainsBtn.title = 'Manage Edit Mode Domains';
+      domainsBtn.onclick = showDomainManager;
+      
+      // Insert before splitbar
+      toolbar.insertBefore(toggleBtn, splitbar);
+      toolbar.insertBefore(domainsBtn, splitbar);
+    }
+
+    // Initialize the app when DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', function() {
+      // Load user domains from localStorage
+      userEditDomains = loadUserDomains();
+      
+      // Determine if we should start in edit mode
+      editMode = determineEditMode();
+      
+      // Set initial mode
+      setPublish(!editMode);
+      
+      // Add edit mode toggle button to toolbar
+      addEditModeToggle();
+    });
 
     editor = document.getElementById('editor');
     filename = document.getElementById('filename');
