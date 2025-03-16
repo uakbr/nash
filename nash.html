@@ -301,12 +301,10 @@
       <div id="splitbar">|</div>
       <!-- Block conversion -->
       <div class="dropdown">
-        <button onclick="toggleDropdown('saveDropdown')">💾</button>
+        <button id="saveButton" onclick="toggleDropdown('saveDropdown')">💾</button>
         <div id="saveDropdown" class="dropdown-content">
           <button onclick="toggleDropdown('saveDropdown'); exportToFile(true, false)">Save</button>
           <button onclick="toggleDropdown('saveDropdown'); exportToFile(false, false)">Share</button>
-          <button onclick="toggleDropdown('saveDropdown'); exportToFile(true, true)">Save as Read-Only</button>
-          <button onclick="toggleDropdown('saveDropdown'); exportToFile(false, true)">Share as Read-Only</button>
         </div>
       </div>
 
@@ -502,15 +500,16 @@
       }
     }
 
-    async function exportToFile(save, publish) {
+    async function exportToFile(save, publish = false) {
       let filename = document.getElementById("filename").innerText.trim();
       if (!filename) {
-        alert("tilte is empty!");
+        alert("title is empty!");
         return;
       }
 
       filename = filename.endsWith(".html") ? filename : filename + ".html";
 
+      // If read-only publishing was requested, set that state
       if (publish) {
         setPublish(true);
       }
@@ -519,6 +518,7 @@
       let blob = new Blob(["<!DOCTYPE html>\n" + content], { type: "text/html" });
       let file = new File([blob], filename, { type: "text/html" });
 
+      // Restore editable state
       if (publish) {
         setPublish(false);
       }
@@ -543,6 +543,7 @@
 
       if (save) {
         contentModified = false;
+        updateSaveButton();
       }
     }
 
@@ -834,6 +835,7 @@
 
     function markAsModified() {
       contentModified = true;
+      updateSaveButton();
     }
 
     function keydownHandler(e) {
@@ -886,6 +888,15 @@
       toolbar.insertBefore(domainsBtn, splitbar);
     }
 
+    // Update save button to show if changes have been made
+    function updateSaveButton() {
+      const saveButton = document.getElementById('saveButton');
+      if (saveButton) {
+        saveButton.innerHTML = contentModified ? '💾*' : '💾';
+        saveButton.title = contentModified ? 'Save (unsaved changes)' : 'Save';
+      }
+    }
+
     // Initialize the app when DOMContentLoaded
     document.addEventListener('DOMContentLoaded', function() {
       // Load user domains from localStorage
@@ -899,6 +910,9 @@
       
       // Add edit mode toggle button to toolbar
       addEditModeToggle();
+      
+      // Initialize save button state
+      updateSaveButton();
     });
 
     editor = document.getElementById('editor');
