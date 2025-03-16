@@ -324,6 +324,7 @@
   </div>
 
   <script>
+    let contentModified = false;
 
     function setPublish(publish) {
       let editor = document.getElementById("editor");
@@ -380,6 +381,10 @@
         a.download = filename;
         a.click();
         URL.revokeObjectURL(a.href);
+      }
+
+      if (save) {
+        contentModified = false;
       }
     }
 
@@ -669,6 +674,10 @@
       document.title = filename || "Nash : Note as HTML";
     }
 
+    function markAsModified() {
+      contentModified = true;
+    }
+
     function keydownHandler(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -698,10 +707,25 @@
     editor.addEventListener('keydown', keydownHandler);
     editor.addEventListener('click', clickHandler);
     editor.addEventListener('blur', normalizeEditor);
-    editor.addEventListener("input", cleanEditor);
+    editor.addEventListener("input", function() {
+      cleanEditor();
+      markAsModified();
+    });
     editor.addEventListener("focus", cleanEditor);
 
-    filename.addEventListener("input", updateTitle);
+    filename.addEventListener("input", function() {
+      updateTitle();
+      markAsModified();
+    });
+
+    // Warn users when closing with unsaved changes
+    window.addEventListener('beforeunload', function(e) {
+      if (contentModified) {
+        const message = 'You have unsaved changes. Are you sure you want to leave?';
+        e.returnValue = message;
+        return message;
+      }
+    });
 
     updateTitle();
 
